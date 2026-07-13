@@ -1,0 +1,20 @@
+# Z Trigger dependencies
+# Install with:  pip install -r requirements.txt
+
+# Browser automation (Brave/Chrome via CDP)
+nodriver>=0.38
+
+# HTTP client for Discord API calls (token validation, humanize)
+httpx[http2]>=0.27
+
+# Config file
+pyyaml>=6.0
+
+# Colored terminal output
+colorama>=0.4.6
+
+# .env file support (optional)
+python-dotenv>=1.0
+
+# Avatar generation for humanize step
+Pillow>=10.0

@@ -1,0 +1,81 @@
+# Z Trigger configuration
+# Edit values below, or override with environment variables.
+
+# ── Browser ──────────────────────────────────────────────────────────────────
+# Run browser in headless mode (no window). Set to false if you want to watch
+# the bot work or if Discord challenges you with captchas.
+headless: false
+
+# How many times to retry a token if a browser-stage error happens.
+max_retries: 3
+
+# Base delay (seconds) between retries; doubles each attempt.
+retry_base_delay: 4
+
+# Save a PNG screenshot on error into the logs/ folder.
+screenshot_on_error: true
+
+# Where to write logs (per-account log files + main.log).
+log_dir: logs
+
+# ── Tokens ───────────────────────────────────────────────────────────────────
+# One token per line. Lines starting with # are ignored.
+# Supported formats:
+#   <token>
+#   <email>:<password>
+#   <email>:<password>:<token>
+tokens_file: tokens.txt
+
+# Optional proxy file (one proxy per line, format: http://user:pass@host:port)
+proxies_file: ""
+
+# ── Pipeline toggles ─────────────────────────────────────────────────────────
+# Set either to false to skip that stage (not recommended — the new method
+# requires all stages to hit the 80-90% success rate).
+humanize_required: true
+payment_method_required: true
+
+# ── Timing ───────────────────────────────────────────────────────────────────
+# HTTP timeout for Discord API calls.
+api_timeout: 20
+
+# Extra seconds to keep watching the quest video after the timer hits zero
+# (buffer for lag / late UI updates).
+quest_video_buffer_secs: 5
+
+# ── NopeCHA Extension (captcha auto-solver) ──────────────────────────────────
+# Path to the NopeCHA extension folder (unpacked). If set, the extension is
+# loaded into Brave automatically and solves hCaptcha/reCaptcha/Turnstile.
+#
+# To get the extension:
+#   1. Install NopeCHA in Brave from https://nopecha.com
+#   2. Find the extension folder:
+#      Windows: %LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\Default\Extensions\dknlfmiahfcgjclgjepdohbbmdchhiaf\
+#      macOS:   ~/Library/Application Support/BraveSoftware/Brave-Browser/Default/Extensions/dknlfmiahfcgjclgjepdohbbmdchhiaf/
+#      Linux:   ~/.config/BraveSoftware/Brave-Browser/Default/Extensions/dknlfmiahfcgjclgjepdohbbmdchhiaf/
+#   3. Inside that folder, there's a version subfolder (e.g. 2.1.0_0).
+#      Use that version subfolder as the path below.
+#
+# Or download the .crx from https://nopecha.com, extract it, and point to the
+# extracted folder.
+#
+# You can also set the NOPECHA_PATH environment variable instead.
+# Default: "nopecha" (looks for the extension in the nopecha/ folder)
+nopecha_extension_path: "nopecha"
+
+# ── NopeCHA API Key ──────────────────────────────────────────────────────────
+# NopeCHA requires an API key for reliable captcha solving. Without it, you'll
+# get errors when the extension tries to solve hCaptcha.
+#
+# HOW TO GET A FREE API KEY:
+#   1. Go to https://nopecha.com
+#   2. Sign up for a free account
+#   3. Go to your dashboard / API keys page
+#   4. Copy your API key (looks like: abc123def456...)
+#   5. Paste it below
+#
+# The bot will automatically inject this key into the NopeCHA extension when
+# the browser starts. You can also set the NOPECHA_API_KEY environment variable.
+#
+# Free tier: 100 solves per day (enough for quest claiming)
+nopecha_api_key: ""

@@ -1,0 +1,29 @@
+# Z Trigger — tokens.txt
+# ─────────────────────────────────────────────────────────────────────────────
+# Add your Discord tokens here, ONE PER LINE.
+# Lines starting with # are ignored.
+#
+# Supported formats:
+#   1) Token only:
+#        MTA1xxxxxxxxxxxxxxx.xxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+#   2) Email + password (will be ignored by Z Trigger — token is required):
+#        you@example.com:yourpassword
+#
+#   3) Email + password + token (recommended):
+#        you@example.com:yourpassword:MTA1xxxxxxx.xxxxxx.xxxxxxxxxxxxxxx
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW TO GET YOUR DISCORD TOKEN:
+#   1. Open Discord in your web browser (https://discord.com/app).
+#   2. Log in to the account you want to trigger the trial on.
+#   3. Open DevTools (F12) -> Network tab.
+#   4. Click any request to discord.com -> Headers -> Request Headers.
+#   5. Copy the value of the "Authorization" header. That is your token.
+#
+# WARNING: Treat your token like a password. Anyone who has it can take over
+#          your account. Never commit it to git or share it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Replace the line below with your real token:
+YOUR_DISCORD_TOKEN_HERE
