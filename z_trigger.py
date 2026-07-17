@@ -23,7 +23,7 @@ License: For educational use only. Use of automation against Discord may violate
 
 # ── Version marker ────────────────────────────────────────────────────────────
 # Used to verify you are running the latest version. Bump on every fix.
-Z_TRIGGER_VERSION = "1.27.0"  # debug quest JS result — log type and value to diagnose JS error: None
+Z_TRIGGER_VERSION = "1.28.0"  # Mac fix: poll-based quest result (no await_promise) + global var storage
 
 
 import asyncio
@@ -119,6 +119,7 @@ ASCII_ART = f"""
 ███████╗       ██║   ██║  ██║██║╚██████╔╝╚██████╔╝███████╗██║  ██║
 ╚══════╝       ╚═╝   ╚═╝  ╚═╝╚═╝ ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝
 {W}        Z TRIGGER  -  Discord Nitro Trial Trigger
+			Built By Arsh
 {DIM}        New method  -  80-90% success rate after 12-48h
 {Fore.YELLOW}        v{Z_TRIGGER_VERSION}
 {RS}"""
@@ -618,145 +619,113 @@ async def _humanize_patch(
     return False, f"{label} failed: HTTP {r.status_code} — {msg} | raw: {raw_text[:200]}", None
 
 
-# Path to Humanizer.exe — use absolute path based on script location
-_SCRIPT_DIR = Path(__file__).parent.resolve() if "__file__" in dir() else Path.cwd()
-HUMANIZER_EXE = _SCRIPT_DIR / "Humanizer.exe"
+# ─────────────────────────────────────────────────────────────────────────────
+# Zumanizer integration — uses zumanizer.py's Humanizer class directly
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 async def humanize_account(account: Account, logger: logging.Logger) -> tuple[bool, str]:
     """
-    Humanize the account using Humanizer.exe.
-
-    The exe is called with the token as a command-line argument:
-        Humanizer.exe <token>
-
-    The exe reads from bios.txt, names.txt, pronouns.txt, and the avatar/ folder
-    and handles the Discord API calls (avatar, bio, display name, pronouns).
-
-    If Humanizer.exe is not found or fails, returns False (non-fatal — bot continues).
+    Humanize the account using zumanizer.py's Humanizer class.
+    
+    This replaces the old Humanizer.exe + Wine approach with native Python code.
+    Handles: avatar, bio, display name, pronouns, and hypesquad.
+    
+    Returns (success, message).
     """
     token = account.token
     if not token:
         return False, "No token available for humanize step."
-
-    # ── Check if Humanizer.exe exists (check multiple locations) ──────────────
-    exe_path = None
-    candidates = [
-        HUMANIZER_EXE,                              # script dir
-        Path("Humanizer.exe"),                      # cwd
-        Path.cwd() / "Humanizer.exe",               # cwd absolute
-        _SCRIPT_DIR / "Humanizer.exe",              # script dir absolute
-    ]
-    for cand in candidates:
-        if cand.exists():
-            exe_path = cand.resolve()
-            break
-
-    if not exe_path:
-        log_warn("Humanizer.exe not found — skipping humanize (non-fatal).")
-        log_info("Place Humanizer.exe in the same folder as z_trigger.py.")
-        return False, "Humanizer.exe not found (non-fatal)"
-
-    # ── Run Humanizer.exe with the token ─────────────────────────────────────
-    log_info(f"Running Humanizer.exe for token ...{account.label}")
-    log_info(f"Exe path: {exe_path}")
-
-    # Also write the token to a temp file in case the exe reads from stdin/file
-    token_file = _SCRIPT_DIR / "token.txt"
+    
+    log_info(f"Humanizing token ...{account.label} via zumanizer.py")
+    
     try:
-        token_file.write_text(token, encoding="utf-8")
-    except Exception:
-        pass
-
-    # Detect platform — on macOS/Linux, Windows .exe files need Wine
-    import platform
-    is_windows = platform.system() == "Windows"
-    wine_path = os.getenv("WINE_PATH", "wine")
-
-    try:
-        if is_windows:
-            # Windows: run the exe directly
-            log_info("Platform: Windows — running exe directly")
-            proc = await asyncio.create_subprocess_exec(
-                str(exe_path),
-                token,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=str(_SCRIPT_DIR),
-            )
+        # Import zumanizer components dynamically
+        from zumanizer import Humanizer, load_file_lines, load_avatar_files, load_avatar_as_base64
+        from zumanizer import DATA_DIR, NAMES_FILE, BIOS_FILE, PRONOUNS_FILE, AVATARS_DIR
+        
+        # Load data files
+        names = load_file_lines(NAMES_FILE) or []
+        bios = load_file_lines(BIOS_FILE) or []
+        pronouns_list = load_file_lines(PRONOUNS_FILE) or []
+        avatar_files = load_avatar_files() or []
+        
+        # Fallbacks if files are empty
+        if not names:
+            names = ["lunar_fox", "cyber_drift", "neon_panda", "quantum_owl", "violet_lynx"]
+        if not bios:
+            bios = ["Just here for the vibes.", "Gaming | Coding | Music", "Late night explorer."]
+        if not pronouns_list:
+            pronouns_list = ["he/him", "she/her", "they/them"]
+        
+        # Create unique assignment functions (like zumanizer main)
+        import random
+        import threading
+        
+        names_queue = list(names)
+        avatars_queue = list(avatar_files)
+        names_lock = threading.Lock()
+        avatars_lock = threading.Lock()
+        
+        def get_unique_name():
+            with names_lock:
+                if names_queue:
+                    return names_queue.pop()
+                refill = list(names)
+                random.shuffle(refill)
+                names_queue.extend(refill)
+                return names_queue.pop() if names_queue else None
+        
+        def get_unique_avatar():
+            with avatars_lock:
+                if avatars_queue:
+                    return avatars_queue.pop()
+                refill = list(avatar_files)
+                random.shuffle(refill)
+                avatars_queue.extend(refill)
+                return avatars_queue.pop() if avatars_queue else None
+        
+        # Avatar cache for lazy loading
+        _avatar_lock = threading.Lock()
+        _avatar_cache = {}
+        
+        def lazy_get_avatar(path):
+            with _avatar_lock:
+                if path in _avatar_cache:
+                    return _avatar_cache[path]
+            b64 = load_avatar_as_base64(path)
+            if b64:
+                with _avatar_lock:
+                    _avatar_cache[path] = b64
+            return b64
+        
+        # Create Humanizer instance (no proxy for single token)
+        humanizer = Humanizer(token, proxy=None)
+        
+        # Run the process synchronously (zumanizer handles threading internally)
+        result = humanizer.process(
+            names=names,
+            bios=bios,
+            pronouns_list=pronouns_list,
+            avatar_files=avatar_files,
+            avatar_loader=lazy_get_avatar,
+            get_unique_name_fn=get_unique_name,
+            get_unique_avatar_fn=get_unique_avatar
+        )
+        
+        if result:
+            log_ok("Account humanized successfully via zumanizer.py")
+            return True, "Humanized via zumanizer.py"
         else:
-            # macOS/Linux: run via Wine
-            log_info(f"Platform: {platform.system()} — running exe via Wine ({wine_path})")
-            log_info(f"Working directory: {_SCRIPT_DIR}")
-            # Set PYTHONIOENCODING=utf-8 to fix UnicodeEncodeError when the exe
-            # tries to print Unicode characters (banner, emoji, etc.) under Wine.
-            # Wine defaults to cp1252 which can't encode many Unicode chars.
-            import subprocess as _sp
-            env = os.environ.copy()
-            env["PYTHONIOENCODING"] = "utf-8"
-            env["PYTHONUTF8"] = "1"
-            env["LANG"] = "en_US.UTF-8"
-            env["LC_ALL"] = "en_US.UTF-8"
-            # Use create_subprocess_shell to combine stdout+stderr for Wine
-            cmd = f'"{wine_path}" "{exe_path}" "{token}" 2>&1'
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=str(_SCRIPT_DIR),
-                env=env,
-            )
-
-        try:
-            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=120)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.communicate()
-            log_warn("Humanizer.exe timed out after 120s — continuing anyway.")
-            return False, "Humanizer.exe timed out (non-fatal)"
-
-        stdout_text = stdout_data.decode("utf-8", errors="ignore") if stdout_data else ""
-        # stderr might be None if we merged it into stdout (Wine shell mode)
-        stderr_text = ""
-        if stderr_data:
-            stderr_text = stderr_data.decode("utf-8", errors="ignore")
-        return_code = proc.returncode
-
-        logger.info(f"Humanizer.exe returned code {return_code}")
-        logger.info(f"Humanizer.exe full output ({len(stdout_text)} chars): {stdout_text[:2000]}")
-
-        # Print ALL output from the exe (not just first 5 lines)
-        if stdout_text:
-            log_info("=== Humanizer.exe output ===")
-            for line in stdout_text.strip().split("\n"):
-                if line.strip():
-                    log_info(f"[Humanizer] {line.strip()}")
-            log_info("=== End Humanizer.exe output ===")
-
-        if stderr_text and not is_windows:
-            # On Windows we keep stderr separate; on Wine it's merged into stdout
-            log_info("=== Humanizer.exe stderr ===")
-            for line in stderr_text.strip().split("\n"):
-                if line.strip():
-                    log_warn(f"[Humanizer stderr] {line.strip()}")
-
-        if return_code == 0:
-            log_ok("Humanizer.exe completed successfully.")
-            return True, "Humanized via Humanizer.exe"
-        else:
-            log_warn(f"Humanizer.exe exited with code {return_code}")
-            return False, f"Humanizer.exe exit code {return_code} (non-fatal)"
-
-    except FileNotFoundError:
-        if not is_windows:
-            log_warn(f"Wine not found ({wine_path}) — install Wine to run Humanizer.exe on macOS/Linux.")
-            log_info("Install with: brew install wine   (macOS)   or   sudo apt install wine   (Linux)")
-        else:
-            log_warn(f"Humanizer.exe not found at {exe_path} — skipping humanize.")
-        return False, "Humanizer.exe/Wine not found (non-fatal)"
+            log_warn("Humanization failed (check logs for details)")
+            return False, "Humanization failed"
+            
+    except ImportError as e:
+        log_err(f"Failed to import zumanizer: {e}")
+        return False, f"Import error: {e}"
     except Exception as e:
-        log_err(f"Error running Humanizer.exe: {e}")
-        return False, f"Humanizer.exe error: {e} (non-fatal)"
+        log_err(f"Error during humanization: {e}")
+        return False, f"Humanization error: {e}"
 
 
 async def _humanize_via_python(account: Account, logger: logging.Logger) -> tuple[bool, str]:
@@ -1981,8 +1950,16 @@ _QUEST_CONSOLE_JS = r"""
     "use strict";
 
     function result(ok, data) {
-        try { return JSON.stringify({ ok: ok, ...data }); }
-        catch(e) { return JSON.stringify({ ok: false, error: "result() failed: " + String(e) }); }
+        try {
+            var r = JSON.stringify({ ok: ok, ...data });
+            try { window.__quest_result = r; } catch(_) {}
+            return r;
+        }
+        catch(e) {
+            var r = JSON.stringify({ ok: false, error: "result() failed: " + String(e) });
+            try { window.__quest_result = r; } catch(_) {}
+            return r;
+        }
     }
 
     function errStr(e) {
@@ -2286,72 +2263,80 @@ async def complete_one_quest_via_console(
     logger: logging.Logger,
 ) -> tuple[bool, str]:
     """
-    Inject JS into Discord's web client to complete ONE video quest + claim reward.
-    Uses Discord's internal API module (webpack extraction) — same approach as
-    pasting the script into DevTools console.
-
-    Returns (success, message).
+    Inject JS into Discord's web client to complete ONE quest + claim reward.
+    Uses a global variable approach for maximum compatibility across platforms.
     """
     log_info("Injecting quest-completion script into Discord console...")
 
     # Make sure we're on discord.com
-    if "discord.com" not in (tab.url or ""):
+    try:
+        href = await tab.evaluate("window.location.href")
+    except Exception:
+        href = ""
+    if not href or "discord.com" not in str(href):
         await tab.get("https://discord.com/channels/@me")
         await _wait_for_page_load(tab, timeout=20)
         await asyncio.sleep(3)
 
-    # Inject the script
+    # Approach: store result in window.__quest_result, then poll for it.
+    # This is more reliable than await_promise on some platforms.
+    
+    # Step 1: Reset the result variable
     try:
-        raw = await tab.evaluate(_QUEST_CONSOLE_JS, await_promise=True)
+        await tab.evaluate("window.__quest_result = null; window.__quest_running = true;")
+    except Exception:
+        pass
+
+    # Step 2: Inject the quest script (modified to store result instead of returning)
+    # The script is the same but wrapped to store in window.__quest_result
+    quest_script = _QUEST_CONSOLE_JS.replace(
+        "(async () => {",
+        "(async () => { try {"
+    ).replace(
+        "})()",
+        "} catch(e) { window.__quest_result = JSON.stringify({ok:false, error:'Outer catch: ' + String(e)}); } window.__quest_running = false; })()"
+    )
+
+    # Launch the script (don't await — it runs in the background)
+    try:
+        await tab.evaluate(quest_script)
     except Exception as e:
-        return False, f"Console injection failed: {e}"
+        log_warn(f"Quest script launch error (may still be running): {e}")
 
-    if not raw:
-        return False, "Console injection returned empty result"
+    # Step 3: Poll for the result
+    log_info("Waiting for quest script to complete (polling every 2s, up to 6 min)...")
+    raw = None
+    for poll in range(180):  # 180 * 2s = 6 minutes max
+        await asyncio.sleep(2)
+        try:
+            raw = await tab.evaluate("window.__quest_result")
+        except Exception:
+            raw = None
 
-    # Debug: log the type and value of raw
-    raw_type = type(raw).__name__
-    logger.info(f"Quest JS returned type: {raw_type}")
-    if isinstance(raw, str):
-        logger.info(f"Quest JS returned string (len {len(raw)}): {raw[:300]}")
-    else:
-        logger.info(f"Quest JS returned {raw_type}: {str(raw)[:300]}")
+        if raw and raw != "null" and str(raw) != "None":
+            break
 
-    # raw might be a string (JSON), a dict, or an ExceptionDetails object
-    # Handle all cases
+        if poll % 15 == 14:  # Every 30 seconds
+            log_info(f"Still waiting for quest script... ({(poll+1)*2}s)")
+
+    if not raw or raw == "null" or str(raw) == "None":
+        return False, "Quest script timed out (no result after 6 min)"
+
+    # Parse the result
+    logger.info(f"Quest JS returned: {str(raw)[:300]}")
+
     if isinstance(raw, str):
         try:
             data = json.loads(raw)
         except Exception:
-            return False, f"Console injection returned unparseable string: {raw[:200]}"
+            return False, f"Quest result unparseable: {raw[:200]}"
     elif isinstance(raw, dict):
         data = raw
-    elif hasattr(raw, 'exception') or hasattr(raw, 'text') or hasattr(raw, 'columnNumber'):
-        # nodriver ExceptionDetails object — JS threw an error
-        # Try to extract the error message from various possible attributes
-        exc_text = ""
-        try:
-            exc = getattr(raw, 'exception', None)
-            if exc is not None:
-                if hasattr(exc, 'value'):
-                    exc_text = str(exc.value)
-                elif hasattr(exc, 'description'):
-                    exc_text = str(exc.description)
-                elif isinstance(exc, dict):
-                    exc_text = exc.get('value', '') or exc.get('description', '')
-                else:
-                    exc_text = str(exc)
-            if not exc_text:
-                exc_text = getattr(raw, 'text', '') or str(raw)
-        except Exception:
-            exc_text = str(raw)
-        return False, f"JS error: {exc_text[:200]}"
     else:
-        # Try to convert to dict
         try:
-            data = dict(raw) if not isinstance(raw, str) else json.loads(raw)
+            data = json.loads(str(raw))
         except Exception:
-            return False, f"Console returned unexpected type {raw_type}: {str(raw)[:200]}"
+            return False, f"Quest result unexpected type {type(raw).__name__}: {str(raw)[:200]}"
 
     if data.get("ok"):
         quest_name = data.get("questName", "Unknown")
@@ -3787,14 +3772,13 @@ async def run_account(account: Account) -> AccountResult:
         result.elapsed = time.time() - start_time
         return result
 
-    # ── Stage 2: Humanize account (via Humanizer.exe) — NON-BLOCKING ─────────
+    # ── Stage 2: Humanize account (via zumanizer.py) — NON-BLOCKING ─────────
     # Humanize runs in the BACKGROUND while the bot continues to quests.
-    # Wine on macOS is slow (30-60s startup), so we don't wait for it.
+    # zumanizer.py is fast and native Python (no Wine needed).
     # The trial can still trigger without humanization.
     if CFG["humanize_required"]:
         log_stage("Humanizing account (background)", account.label)
-        log_info("Humanizer.exe is running in the background — bot continues to quests.")
-        log_info("(Wine on macOS takes 30-60s to start — this is normal.)")
+        log_info("zumanizer.py is running in the background — bot continues to quests.")
         # Run humanize as a background task (don't await it)
         asyncio.create_task(_humanize_background(account, logger))
     else:
